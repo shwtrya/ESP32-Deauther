@@ -68,6 +68,18 @@ If you need the **full version** for **legitimate, legal research** — you must
   - Select target AP(s)
   - Choose attack type & duration *(optional)*
 
+## Update 1.1
+
+Ringkasan pembaruan untuk versi 1.1 (lihat juga [Features](#-features)):
+
+- **Mode Beacon Spam lebih terkontrol**
+  - Opsi batas jumlah AP palsu yang lebih jelas untuk pengujian terarah.
+- **Penyempurnaan UI Web**
+  - Navigasi pemilihan target AP lebih ringkas dan mudah dibaca.
+  - Penjelasan mode serangan & durasi dibuat lebih informatif.
+- **Stabilitas & kompatibilitas**
+  - Optimalisasi alur kerja agar lebih stabil di papan ESP32 Devkit V1.
+
 
 
 ## Supported Hardware
