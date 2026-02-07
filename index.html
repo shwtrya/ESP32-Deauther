@@ -349,6 +349,51 @@
             margin-top: 8px;
         }
 
+        .stats-panel {
+            display: grid;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .stats-header p {
+            color: var(--dark-gray);
+            margin-top: 6px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+        }
+
+        .stat-tile {
+            background: var(--light-gray);
+            border-radius: 14px;
+            padding: 18px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.2);
+        }
+
+        .stat-label {
+            font-size: 0.95rem;
+            color: var(--dark-gray);
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+            letter-spacing: 0.5px;
+        }
+
+        .stats-updated {
+            font-size: 0.85rem;
+            color: var(--dark-gray);
+        }
+
         .whitelist-panel {
             margin-top: 25px;
             padding: 18px;
@@ -945,6 +990,28 @@
                 <p class="section-subtitle">Whitelist approved SSIDs/BSSIDs and confirm authorization before starting any active request.</p>
             </div>
 
+            <div class="card stats-panel">
+                <div class="stats-header">
+                    <h3>Live Scan Metrics</h3>
+                    <p>Snapshot of nearby access points, detected clients, and authorized attack sessions.</p>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-tile">
+                        <span class="stat-label">Total AP</span>
+                        <span class="stat-value" id="stat-total-aps">--</span>
+                    </div>
+                    <div class="stat-tile">
+                        <span class="stat-label">Total Clients</span>
+                        <span class="stat-value" id="stat-total-clients">--</span>
+                    </div>
+                    <div class="stat-tile">
+                        <span class="stat-label">Attack Sessions</span>
+                        <span class="stat-value" id="stat-attack-sessions">--</span>
+                    </div>
+                </div>
+                <p class="stats-updated" id="stats-updated">Last updated: waiting for device...</p>
+            </div>
+
             <div class="card ui-panel">
                 <h3>Mode Selection</h3>
                 <div class="mode-option">
@@ -1308,9 +1375,15 @@
         const downloadLogButton = document.getElementById('download-log');
         const logFormatSelect = document.getElementById('log-format');
         const logStatus = document.getElementById('log-status');
+        const statTotalAps = document.getElementById('stat-total-aps');
+        const statTotalClients = document.getElementById('stat-total-clients');
+        const statAttackSessions = document.getElementById('stat-attack-sessions');
+        const statsUpdated = document.getElementById('stats-updated');
 
         const whitelistStorageKey = 'hydra32Whitelist';
         let whitelist = [];
+        const metricsEndpoint = '/metrics.json';
+        const metricsPollInterval = 10000;
 
         const normalizeTarget = (value) => value.trim();
 
@@ -1388,6 +1461,61 @@
                 return;
             }
             logStatus.textContent = `Log download: ${message}`;
+        };
+
+        const formatMetricValue = (value) => {
+            if (value === null || value === undefined) {
+                return '--';
+            }
+            if (typeof value === 'number') {
+                return value.toLocaleString();
+            }
+            const parsed = Number(value);
+            if (!Number.isNaN(parsed)) {
+                return parsed.toLocaleString();
+            }
+            return value;
+        };
+
+        const updateMetricsUI = (metrics) => {
+            if (statTotalAps) {
+                statTotalAps.textContent = formatMetricValue(metrics.totalAPs);
+            }
+            if (statTotalClients) {
+                statTotalClients.textContent = formatMetricValue(metrics.totalClients);
+            }
+            if (statAttackSessions) {
+                statAttackSessions.textContent = formatMetricValue(metrics.attackSessions);
+            }
+            if (statsUpdated) {
+                const timestamp = metrics.updatedAt ? new Date(metrics.updatedAt) : new Date();
+                const readable = Number.isNaN(timestamp.getTime())
+                    ? 'recently'
+                    : timestamp.toLocaleTimeString();
+                statsUpdated.textContent = `Last updated: ${readable}`;
+            }
+        };
+
+        const handleMetricsError = () => {
+            if (statsUpdated) {
+                statsUpdated.textContent = 'Last updated: unable to reach device.';
+            }
+        };
+
+        const fetchMetrics = async () => {
+            if (!statTotalAps || !statTotalClients || !statAttackSessions) {
+                return;
+            }
+            try {
+                const response = await fetch(`${metricsEndpoint}?t=${Date.now()}`, { cache: 'no-store' });
+                if (!response.ok) {
+                    throw new Error('Metrics fetch failed');
+                }
+                const metrics = await response.json();
+                updateMetricsUI(metrics);
+            } catch (error) {
+                handleMetricsError();
+            }
         };
 
         const downloadLog = async () => {
@@ -1529,6 +1657,8 @@
 
         loadWhitelist();
         renderWhitelist();
+        fetchMetrics();
+        setInterval(fetchMetrics, metricsPollInterval);
         
         // Simple animation for cards on scroll
         const observer = new IntersectionObserver((entries) => {
