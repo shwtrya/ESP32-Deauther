@@ -315,10 +315,147 @@
             color: var(--warning);
         }
 
+        .badge-authorized {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+        }
+
         .status-line {
             font-size: 0.95rem;
             color: var(--dark-gray);
             margin-top: 15px;
+        }
+
+        .whitelist-panel {
+            margin-top: 25px;
+            padding: 18px;
+            border-radius: 12px;
+            border: 1px solid var(--medium-gray);
+            background: var(--light);
+        }
+
+        .whitelist-panel h4 {
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            color: var(--text);
+        }
+
+        .whitelist-helper {
+            font-size: 0.95rem;
+            color: var(--dark-gray);
+            margin-bottom: 15px;
+        }
+
+        .whitelist-input {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+
+        .whitelist-input input {
+            flex: 1 1 240px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--medium-gray);
+        }
+
+        .whitelist-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 0;
+            padding: 0;
+        }
+
+        .whitelist-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            background: var(--light-gray);
+            border: 1px solid var(--medium-gray);
+            font-size: 0.95rem;
+        }
+
+        .whitelist-item span {
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .whitelist-item button {
+            background: transparent;
+            border: none;
+            color: var(--danger);
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .target-select {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 16px;
+        }
+
+        .target-select select {
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--medium-gray);
+            background: var(--light);
+        }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 20px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--light);
+            border-radius: 16px;
+            padding: 28px;
+            max-width: 420px;
+            width: 100%;
+            box-shadow: var(--card-shadow);
+            border: 1px solid var(--medium-gray);
+        }
+
+        .modal h4 {
+            font-size: 1.3rem;
+            margin-bottom: 10px;
+            color: var(--text);
+        }
+
+        .modal p {
+            color: var(--dark-gray);
+            margin-bottom: 18px;
+        }
+
+        .modal-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 18px;
+            font-weight: 600;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
         }
         
         /* Features Grid */
@@ -781,8 +918,8 @@
     <section id="web-ui" class="alternate">
         <div class="container">
             <div class="section-header">
-                <h2 class="section-title">Web UI: Passive Recon</h2>
-                <p class="section-subtitle">Run read-only reconnaissance to inventory nearby access points and clients.</p>
+                <h2 class="section-title">Web UI: Authorized Tests</h2>
+                <p class="section-subtitle">Whitelist approved SSIDs/BSSIDs and confirm authorization before starting any active request.</p>
             </div>
 
             <div class="card ui-panel">
@@ -790,13 +927,32 @@
                 <div class="mode-option">
                     <label class="mode-label" for="mode-passive-recon">
                         <input type="radio" id="mode-passive-recon" name="mode" checked>
-                        Passive Recon
-                        <span class="badge badge-readonly">read-only</span>
+                        Authorized Test
+                        <span class="badge badge-authorized">authorization required</span>
                     </label>
-                    <p>Only triggers AP/client scans. No deauth or beacon frames are transmitted.</p>
+                    <p>Use this mode only with explicit permission and a whitelisted SSID/BSSID.</p>
                 </div>
+
+                <div class="whitelist-panel">
+                    <h4>Authorized Target Whitelist</h4>
+                    <p class="whitelist-helper">Add SSIDs or BSSIDs that you have permission to test. Attack requests are rejected if the target is not whitelisted.</p>
+                    <div class="whitelist-input">
+                        <input type="text" id="whitelist-input" placeholder="e.g. Office-WiFi or AA:BB:CC:DD:EE:FF">
+                        <button class="btn btn-outline" id="add-whitelist">
+                            <i class="fas fa-plus"></i> Add Target
+                        </button>
+                    </div>
+                    <ul class="whitelist-list" id="whitelist-list"></ul>
+                    <div class="target-select">
+                        <label for="attack-target">Attack target (must be in whitelist)</label>
+                        <select id="attack-target">
+                            <option value="">Select a whitelisted target</option>
+                        </select>
+                    </div>
+                </div>
+
                 <button class="btn btn-primary" id="start-passive-recon">
-                    <i class="fas fa-search"></i> Start Passive Recon
+                    <i class="fas fa-play"></i> Start
                 </button>
                 <p class="status-line" id="passive-recon-status">Status: idle</p>
             </div>
@@ -1025,6 +1181,23 @@
         </div>
     </section>
 
+    <div class="modal-overlay" id="authorization-modal" role="dialog" aria-modal="true" aria-labelledby="authorization-title">
+        <div class="modal">
+            <h4 id="authorization-title">Confirm Authorization</h4>
+            <p>Before starting an attack, confirm that you have explicit authorization for the selected target.</p>
+            <label class="modal-checkbox" for="authorization-check">
+                <input type="checkbox" id="authorization-check">
+                I have authorization
+            </label>
+            <div class="modal-actions">
+                <button class="btn btn-outline" id="cancel-authorization">Cancel</button>
+                <button class="btn btn-primary" id="confirm-authorization" disabled>
+                    <i class="fas fa-check"></i> Confirm Start
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer>
         <div class="container">
@@ -1090,23 +1263,192 @@
 
         const passiveReconButton = document.getElementById('start-passive-recon');
         const passiveReconStatus = document.getElementById('passive-recon-status');
+        const whitelistInput = document.getElementById('whitelist-input');
+        const whitelistList = document.getElementById('whitelist-list');
+        const addWhitelistButton = document.getElementById('add-whitelist');
+        const attackTargetSelect = document.getElementById('attack-target');
+        const authorizationModal = document.getElementById('authorization-modal');
+        const authorizationCheck = document.getElementById('authorization-check');
+        const cancelAuthorization = document.getElementById('cancel-authorization');
+        const confirmAuthorization = document.getElementById('confirm-authorization');
 
-        if (passiveReconButton && passiveReconStatus) {
-            passiveReconButton.addEventListener('click', async () => {
-                passiveReconStatus.textContent = 'Status: scanning for APs and clients...';
-                passiveReconButton.disabled = true;
+        const whitelistStorageKey = 'hydra32Whitelist';
+        let whitelist = [];
 
-                try {
-                    await fetch('/scan?mode=passive&target=aps', { method: 'POST' });
-                    await fetch('/scan?mode=passive&target=clients', { method: 'POST' });
-                    passiveReconStatus.textContent = 'Status: scan requested (read-only).';
-                } catch (error) {
-                    passiveReconStatus.textContent = 'Status: unable to reach device.';
-                } finally {
-                    passiveReconButton.disabled = false;
+        const normalizeTarget = (value) => value.trim();
+
+        const loadWhitelist = () => {
+            try {
+                const stored = JSON.parse(localStorage.getItem(whitelistStorageKey));
+                whitelist = Array.isArray(stored) ? stored : [];
+            } catch (error) {
+                whitelist = [];
+            }
+        };
+
+        const saveWhitelist = () => {
+            localStorage.setItem(whitelistStorageKey, JSON.stringify(whitelist));
+        };
+
+        const renderWhitelist = () => {
+            if (!whitelistList || !attackTargetSelect) {
+                return;
+            }
+
+            whitelistList.innerHTML = '';
+            attackTargetSelect.innerHTML = '<option value="">Select a whitelisted target</option>';
+
+            whitelist.forEach((entry) => {
+                const item = document.createElement('li');
+                item.className = 'whitelist-item';
+                const label = document.createElement('span');
+                label.textContent = entry;
+                const removeButton = document.createElement('button');
+                removeButton.type = 'button';
+                removeButton.textContent = 'Remove';
+                removeButton.addEventListener('click', () => {
+                    whitelist = whitelist.filter((target) => target !== entry);
+                    saveWhitelist();
+                    renderWhitelist();
+                });
+                item.appendChild(label);
+                item.appendChild(removeButton);
+                whitelistList.appendChild(item);
+
+                const option = document.createElement('option');
+                option.value = entry;
+                option.textContent = entry;
+                attackTargetSelect.appendChild(option);
+            });
+        };
+
+        const addWhitelistEntry = () => {
+            if (!whitelistInput) {
+                return;
+            }
+            const value = normalizeTarget(whitelistInput.value);
+            if (!value) {
+                return;
+            }
+            const exists = whitelist.some((entry) => entry.toLowerCase() === value.toLowerCase());
+            if (!exists) {
+                whitelist.push(value);
+                saveWhitelist();
+                renderWhitelist();
+            }
+            whitelistInput.value = '';
+        };
+
+        const isWhitelisted = (target) => {
+            if (!target) {
+                return false;
+            }
+            return whitelist.some((entry) => entry.toLowerCase() === target.toLowerCase());
+        };
+
+        const openAuthorizationModal = () => {
+            if (!authorizationModal || !authorizationCheck || !confirmAuthorization) {
+                return;
+            }
+            authorizationCheck.checked = false;
+            confirmAuthorization.disabled = true;
+            authorizationModal.classList.add('active');
+        };
+
+        const closeAuthorizationModal = () => {
+            if (!authorizationModal) {
+                return;
+            }
+            authorizationModal.classList.remove('active');
+        };
+
+        const requestAttack = async (target) => {
+            if (!passiveReconStatus || !passiveReconButton) {
+                return;
+            }
+            if (!isWhitelisted(target)) {
+                passiveReconStatus.textContent = 'Status: request rejected by firmware (target not in whitelist).';
+                return;
+            }
+
+            passiveReconStatus.textContent = 'Status: sending authorized request...';
+            passiveReconButton.disabled = true;
+
+            try {
+                const response = await fetch('/attack', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        target,
+                        whitelist
+                    })
+                });
+                if (!response.ok) {
+                    throw new Error('Firmware rejected request');
+                }
+                passiveReconStatus.textContent = 'Status: attack request accepted by device.';
+            } catch (error) {
+                passiveReconStatus.textContent = 'Status: unable to reach device or request denied.';
+            } finally {
+                passiveReconButton.disabled = false;
+            }
+        };
+
+        if (addWhitelistButton) {
+            addWhitelistButton.addEventListener('click', addWhitelistEntry);
+        }
+
+        if (whitelistInput) {
+            whitelistInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    addWhitelistEntry();
                 }
             });
         }
+
+        if (authorizationCheck && confirmAuthorization) {
+            authorizationCheck.addEventListener('change', () => {
+                confirmAuthorization.disabled = !authorizationCheck.checked;
+            });
+        }
+
+        if (cancelAuthorization) {
+            cancelAuthorization.addEventListener('click', closeAuthorizationModal);
+        }
+
+        if (authorizationModal) {
+            authorizationModal.addEventListener('click', (event) => {
+                if (event.target === authorizationModal) {
+                    closeAuthorizationModal();
+                }
+            });
+        }
+
+        if (confirmAuthorization && attackTargetSelect) {
+            confirmAuthorization.addEventListener('click', async () => {
+                closeAuthorizationModal();
+                await requestAttack(attackTargetSelect.value);
+            });
+        }
+
+        if (passiveReconButton && attackTargetSelect) {
+            passiveReconButton.addEventListener('click', () => {
+                const target = attackTargetSelect.value;
+                if (!target) {
+                    if (passiveReconStatus) {
+                        passiveReconStatus.textContent = 'Status: select a whitelisted target before starting.';
+                    }
+                    return;
+                }
+                openAuthorizationModal();
+            });
+        }
+
+        loadWhitelist();
+        renderWhitelist();
         
         // Simple animation for cards on scroll
         const observer = new IntersectionObserver((entries) => {
