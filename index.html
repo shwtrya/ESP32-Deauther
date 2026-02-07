@@ -534,6 +534,74 @@
             color: var(--dark-gray);
         }
 
+        .preset-panel {
+            background: var(--light-gray);
+            border-radius: 12px;
+            padding: 20px;
+            display: grid;
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .preset-panel h4 {
+            font-size: 1.1rem;
+            margin-bottom: 4px;
+            color: var(--text);
+        }
+
+        .preset-panel p {
+            color: var(--dark-gray);
+            font-size: 0.95rem;
+        }
+
+        .preset-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 16px;
+        }
+
+        .preset-field {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .preset-field label {
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .preset-field select {
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--medium-gray);
+            background: var(--light);
+            font-size: 0.95rem;
+        }
+
+        .preset-details {
+            display: grid;
+            gap: 6px;
+            font-size: 0.95rem;
+            color: var(--dark-gray);
+        }
+
+        .preset-details strong {
+            color: var(--text);
+        }
+
+        .preset-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .preset-status {
+            font-size: 0.95rem;
+            color: var(--dark-gray);
+        }
+
         .modal-overlay {
             position: fixed;
             inset: 0;
@@ -1128,6 +1196,42 @@
                     </div>
                 </div>
 
+                <div class="preset-panel">
+                    <div>
+                        <h4>Attack Presets</h4>
+                        <p>Select a preset profile and target to launch a pre-tuned configuration without manual parameter input.</p>
+                    </div>
+                    <div class="preset-grid">
+                        <div class="preset-field">
+                            <label for="preset-select">Preset profile</label>
+                            <select id="preset-select">
+                                <option value="">Select a preset</option>
+                                <option value="deauth_short">Deauth Short</option>
+                                <option value="beacon_burst">Beacon Burst</option>
+                                <option value="stealth">Stealth</option>
+                            </select>
+                        </div>
+                        <div class="preset-field">
+                            <label for="preset-target">Target (whitelisted)</label>
+                            <select id="preset-target">
+                                <option value="">Select a whitelisted target</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="preset-details" id="preset-details">
+                        <div><strong>Duration:</strong> <span id="preset-duration">--</span></div>
+                        <div><strong>Interval:</strong> <span id="preset-interval">--</span></div>
+                        <div><strong>Channel:</strong> <span id="preset-channel">--</span></div>
+                        <div id="preset-description"></div>
+                    </div>
+                    <div class="preset-actions">
+                        <button class="btn btn-outline" id="run-preset" type="button">
+                            <i class="fas fa-bolt"></i> Run Preset
+                        </button>
+                        <p class="preset-status" id="preset-status">Preset status: idle</p>
+                    </div>
+                </div>
+
                 <button class="btn btn-primary" id="start-passive-recon">
                     <i class="fas fa-play"></i> Start
                 </button>
@@ -1464,6 +1568,15 @@
         const scheduleTargetSelect = document.getElementById('schedule-target');
         const scheduleAttackButton = document.getElementById('schedule-attack');
         const scheduleStatus = document.getElementById('schedule-status');
+        const presetSelect = document.getElementById('preset-select');
+        const presetTargetSelect = document.getElementById('preset-target');
+        const presetDetails = document.getElementById('preset-details');
+        const presetDuration = document.getElementById('preset-duration');
+        const presetInterval = document.getElementById('preset-interval');
+        const presetChannel = document.getElementById('preset-channel');
+        const presetDescription = document.getElementById('preset-description');
+        const runPresetButton = document.getElementById('run-preset');
+        const presetStatus = document.getElementById('preset-status');
         const downloadLogButton = document.getElementById('download-log');
         const logFormatSelect = document.getElementById('log-format');
         const logStatus = document.getElementById('log-status');
@@ -1476,6 +1589,31 @@
         let whitelist = [];
         const metricsEndpoint = '/metrics.json';
         const metricsPollInterval = 10000;
+        let pendingAuthorizationAction = null;
+
+        const attackPresets = {
+            deauth_short: {
+                label: 'Deauth Short',
+                durationMs: 15000,
+                intervalMs: 200,
+                channel: 6,
+                description: 'Short burst to validate deauth responsiveness.'
+            },
+            beacon_burst: {
+                label: 'Beacon Burst',
+                durationMs: 30000,
+                intervalMs: 100,
+                channel: 1,
+                description: 'High-frequency beacon injection for visibility tests.'
+            },
+            stealth: {
+                label: 'Stealth',
+                durationMs: 60000,
+                intervalMs: 750,
+                channel: 11,
+                description: 'Low-and-slow cadence to stay under the radar.'
+            }
+        };
 
         const normalizeTarget = (value) => value.trim();
 
@@ -1493,13 +1631,14 @@
         };
 
         const renderWhitelist = () => {
-            if (!whitelistList || !attackTargetSelect || !scheduleTargetSelect) {
+            if (!whitelistList || !attackTargetSelect || !scheduleTargetSelect || !presetTargetSelect) {
                 return;
             }
 
             whitelistList.innerHTML = '';
             attackTargetSelect.innerHTML = '<option value="">Select a whitelisted target</option>';
             scheduleTargetSelect.innerHTML = '<option value="">Select a whitelisted target</option>';
+            presetTargetSelect.innerHTML = '<option value="">Select a whitelisted target</option>';
 
             whitelist.forEach((entry) => {
                 const item = document.createElement('li');
@@ -1527,6 +1666,11 @@
                 scheduleOption.value = entry;
                 scheduleOption.textContent = entry;
                 scheduleTargetSelect.appendChild(scheduleOption);
+
+                const presetOption = document.createElement('option');
+                presetOption.value = entry;
+                presetOption.textContent = entry;
+                presetTargetSelect.appendChild(presetOption);
             });
         };
 
@@ -1662,6 +1806,7 @@
                 return;
             }
             authorizationModal.classList.remove('active');
+            pendingAuthorizationAction = null;
         };
 
         const requestAttack = async (target) => {
@@ -1695,6 +1840,76 @@
                 passiveReconStatus.textContent = 'Status: unable to reach device or request denied.';
             } finally {
                 passiveReconButton.disabled = false;
+            }
+        };
+
+        const setPresetStatus = (message) => {
+            if (!presetStatus) {
+                return;
+            }
+            presetStatus.textContent = `Preset status: ${message}`;
+        };
+
+        const updatePresetDetails = (presetId) => {
+            if (!presetDetails) {
+                return;
+            }
+            const preset = presetId ? attackPresets[presetId] : null;
+
+            if (!preset) {
+                if (presetDuration) presetDuration.textContent = '--';
+                if (presetInterval) presetInterval.textContent = '--';
+                if (presetChannel) presetChannel.textContent = '--';
+                if (presetDescription) {
+                    presetDescription.textContent = '';
+                }
+                return;
+            }
+
+            if (presetDuration) presetDuration.textContent = `${(preset.durationMs / 1000).toFixed(0)}s`;
+            if (presetInterval) presetInterval.textContent = `${preset.intervalMs}ms`;
+            if (presetChannel) presetChannel.textContent = `${preset.channel}`;
+            if (presetDescription) {
+                presetDescription.textContent = preset.description;
+            }
+        };
+
+        const requestPreset = async (presetId, target) => {
+            if (!runPresetButton) {
+                return;
+            }
+            if (!presetId) {
+                setPresetStatus('select a preset first.');
+                return;
+            }
+            if (!isWhitelisted(target)) {
+                setPresetStatus('target is not in whitelist.');
+                return;
+            }
+
+            setPresetStatus('sending preset to device...');
+            runPresetButton.disabled = true;
+
+            try {
+                const params = new URLSearchParams({
+                    preset: presetId,
+                    target
+                });
+                const response = await fetch('/preset', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: params.toString()
+                });
+                if (!response.ok) {
+                    throw new Error('Preset rejected');
+                }
+                setPresetStatus('preset accepted by device.');
+            } catch (error) {
+                setPresetStatus('unable to reach device or preset denied.');
+            } finally {
+                runPresetButton.disabled = false;
             }
         };
 
@@ -1792,7 +2007,9 @@
         if (confirmAuthorization && attackTargetSelect) {
             confirmAuthorization.addEventListener('click', async () => {
                 closeAuthorizationModal();
-                await requestAttack(attackTargetSelect.value);
+                if (pendingAuthorizationAction) {
+                    await pendingAuthorizationAction();
+                }
             });
         }
 
@@ -1805,6 +2022,30 @@
                     }
                     return;
                 }
+                pendingAuthorizationAction = () => requestAttack(target);
+                openAuthorizationModal();
+            });
+        }
+
+        if (presetSelect) {
+            presetSelect.addEventListener('change', () => {
+                updatePresetDetails(presetSelect.value);
+            });
+        }
+
+        if (runPresetButton && presetSelect && presetTargetSelect) {
+            runPresetButton.addEventListener('click', () => {
+                const presetId = presetSelect.value;
+                const target = presetTargetSelect.value;
+                if (!presetId) {
+                    setPresetStatus('select a preset first.');
+                    return;
+                }
+                if (!target) {
+                    setPresetStatus('select a whitelisted target before starting.');
+                    return;
+                }
+                pendingAuthorizationAction = () => requestPreset(presetId, target);
                 openAuthorizationModal();
             });
         }
@@ -1822,6 +2063,9 @@
         if (scheduleStartInput) {
             const defaultStart = new Date(Date.now() + 5 * 60 * 1000);
             scheduleStartInput.value = defaultStart.toISOString().slice(0, 16);
+        }
+        if (presetSelect) {
+            updatePresetDetails(presetSelect.value);
         }
         fetchMetrics();
         setInterval(fetchMetrics, metricsPollInterval);
