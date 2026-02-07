@@ -476,6 +476,64 @@
             background: var(--light);
         }
 
+        .schedule-panel {
+            background: var(--light-gray);
+            border-radius: 12px;
+            padding: 20px;
+            display: grid;
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .schedule-panel h4 {
+            font-size: 1.1rem;
+            margin-bottom: 4px;
+            color: var(--text);
+        }
+
+        .schedule-panel p {
+            color: var(--dark-gray);
+            font-size: 0.95rem;
+        }
+
+        .schedule-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 16px;
+        }
+
+        .schedule-field {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .schedule-field label {
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .schedule-field input,
+        .schedule-field select {
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--medium-gray);
+            background: var(--light);
+            font-size: 0.95rem;
+        }
+
+        .schedule-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .schedule-status {
+            font-size: 0.95rem;
+            color: var(--dark-gray);
+        }
+
         .modal-overlay {
             position: fixed;
             inset: 0;
@@ -1041,6 +1099,35 @@
                     </div>
                 </div>
 
+                <div class="schedule-panel">
+                    <div>
+                        <h4>Schedule Authorized Test</h4>
+                        <p>Pick a start time, duration, and whitelisted target. The firmware will start on schedule and stop automatically.</p>
+                    </div>
+                    <div class="schedule-grid">
+                        <div class="schedule-field">
+                            <label for="schedule-start">Start time</label>
+                            <input type="datetime-local" id="schedule-start">
+                        </div>
+                        <div class="schedule-field">
+                            <label for="schedule-duration">Duration (minutes)</label>
+                            <input type="number" id="schedule-duration" min="1" max="180" value="15">
+                        </div>
+                        <div class="schedule-field">
+                            <label for="schedule-target">Target (whitelisted)</label>
+                            <select id="schedule-target">
+                                <option value="">Select a whitelisted target</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="schedule-actions">
+                        <button class="btn btn-outline" id="schedule-attack" type="button">
+                            <i class="fas fa-calendar-check"></i> Schedule
+                        </button>
+                        <p class="schedule-status" id="schedule-status">Schedule status: idle</p>
+                    </div>
+                </div>
+
                 <button class="btn btn-primary" id="start-passive-recon">
                     <i class="fas fa-play"></i> Start
                 </button>
@@ -1372,6 +1459,11 @@
         const authorizationCheck = document.getElementById('authorization-check');
         const cancelAuthorization = document.getElementById('cancel-authorization');
         const confirmAuthorization = document.getElementById('confirm-authorization');
+        const scheduleStartInput = document.getElementById('schedule-start');
+        const scheduleDurationInput = document.getElementById('schedule-duration');
+        const scheduleTargetSelect = document.getElementById('schedule-target');
+        const scheduleAttackButton = document.getElementById('schedule-attack');
+        const scheduleStatus = document.getElementById('schedule-status');
         const downloadLogButton = document.getElementById('download-log');
         const logFormatSelect = document.getElementById('log-format');
         const logStatus = document.getElementById('log-status');
@@ -1401,12 +1493,13 @@
         };
 
         const renderWhitelist = () => {
-            if (!whitelistList || !attackTargetSelect) {
+            if (!whitelistList || !attackTargetSelect || !scheduleTargetSelect) {
                 return;
             }
 
             whitelistList.innerHTML = '';
             attackTargetSelect.innerHTML = '<option value="">Select a whitelisted target</option>';
+            scheduleTargetSelect.innerHTML = '<option value="">Select a whitelisted target</option>';
 
             whitelist.forEach((entry) => {
                 const item = document.createElement('li');
@@ -1429,6 +1522,11 @@
                 option.value = entry;
                 option.textContent = entry;
                 attackTargetSelect.appendChild(option);
+
+                const scheduleOption = document.createElement('option');
+                scheduleOption.value = entry;
+                scheduleOption.textContent = entry;
+                scheduleTargetSelect.appendChild(scheduleOption);
             });
         };
 
@@ -1600,6 +1698,66 @@
             }
         };
 
+        const setScheduleStatus = (message) => {
+            if (!scheduleStatus) {
+                return;
+            }
+            scheduleStatus.textContent = `Schedule status: ${message}`;
+        };
+
+        const requestSchedule = async () => {
+            if (!scheduleStartInput || !scheduleDurationInput || !scheduleTargetSelect || !scheduleAttackButton) {
+                return;
+            }
+
+            const target = scheduleTargetSelect.value;
+            if (!isWhitelisted(target)) {
+                setScheduleStatus('target is not in whitelist.');
+                return;
+            }
+
+            const startValue = scheduleStartInput.value;
+            const startTimeMs = startValue ? new Date(startValue).getTime() : NaN;
+            if (Number.isNaN(startTimeMs)) {
+                setScheduleStatus('select a valid start time.');
+                return;
+            }
+
+            const durationMinutes = Number(scheduleDurationInput.value);
+            if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+                setScheduleStatus('enter a valid duration.');
+                return;
+            }
+
+            const durationMs = Math.round(durationMinutes * 60 * 1000);
+            setScheduleStatus('sending schedule to device...');
+            scheduleAttackButton.disabled = true;
+
+            try {
+                const response = await fetch('/schedule', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        target,
+                        startTimeMs,
+                        durationMs,
+                        whitelist,
+                        clientTimeMs: Date.now()
+                    })
+                });
+                if (!response.ok) {
+                    throw new Error('Schedule rejected');
+                }
+                setScheduleStatus('scheduled successfully.');
+            } catch (error) {
+                setScheduleStatus('unable to reach device or schedule denied.');
+            } finally {
+                scheduleAttackButton.disabled = false;
+            }
+        };
+
         if (addWhitelistButton) {
             addWhitelistButton.addEventListener('click', addWhitelistEntry);
         }
@@ -1651,12 +1809,20 @@
             });
         }
 
+        if (scheduleAttackButton) {
+            scheduleAttackButton.addEventListener('click', requestSchedule);
+        }
+
         if (downloadLogButton) {
             downloadLogButton.addEventListener('click', downloadLog);
         }
 
         loadWhitelist();
         renderWhitelist();
+        if (scheduleStartInput) {
+            const defaultStart = new Date(Date.now() + 5 * 60 * 1000);
+            scheduleStartInput.value = defaultStart.toISOString().slice(0, 16);
+        }
         fetchMetrics();
         setInterval(fetchMetrics, metricsPollInterval);
         
