@@ -4,14 +4,21 @@
 #include "esp_bt_device.h"
 #include "esp_gap_ble_api.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "event_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
 static const char *TAG = "ble_spam";
 static bool attack_active = false;
 static TaskHandle_t ble_task_handle = NULL;
+static uint64_t attack_start_ms = 0;
+static uint32_t planned_duration_ms = 0;
+static event_log_source_t attack_source = EVENT_LOG_SOURCE_UI;
+static char current_target[64] = "-";
 
 static esp_power_level_t get_random_tx_power() {
     static const esp_power_level_t power_levels[] = {
@@ -209,6 +216,10 @@ esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, get_random_tx_power());
 
 void ios_attack_ble_spam_start() {
     if (attack_active) return;
+
+    attack_start_ms = (uint64_t)(esp_timer_get_time() / 1000);
+    event_log_add(EVENT_LOG_START, attack_source, current_target, planned_duration_ms);
+    planned_duration_ms = 0;
     
     // Initialize BLE controller
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
@@ -234,4 +245,32 @@ void ios_attack_ble_spam_stop() {
     if (ble_task_handle) {
         vTaskDelay(100 / portTICK_PERIOD_MS); // Allow task to exit
     }
+
+    if (attack_start_ms > 0) {
+        uint64_t stop_ms = (uint64_t)(esp_timer_get_time() / 1000);
+        uint32_t duration_ms = stop_ms >= attack_start_ms
+                                   ? (uint32_t)(stop_ms - attack_start_ms)
+                                   : 0;
+        event_log_add(EVENT_LOG_STOP, attack_source, current_target, duration_ms);
+        attack_start_ms = 0;
+    }
+}
+
+void ios_attack_ble_spam_start_with_context(const char *target, event_log_source_t source, uint32_t duration_ms) {
+    if (target && target[0] != '\0') {
+        snprintf(current_target, sizeof(current_target), "%s", target);
+        event_log_add(EVENT_LOG_TARGET, source, current_target, 0);
+    }
+    attack_source = source;
+    planned_duration_ms = duration_ms;
+    ios_attack_ble_spam_start();
+}
+
+void ios_attack_ble_spam_stop_with_source(event_log_source_t source) {
+    attack_source = source;
+    ios_attack_ble_spam_stop();
+}
+
+void ios_attack_ble_spam_log_scan(event_log_source_t source, uint32_t duration_ms) {
+    event_log_add(EVENT_LOG_SCAN, source, current_target, duration_ms);
 }

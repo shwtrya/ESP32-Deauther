@@ -326,6 +326,29 @@
             margin-top: 15px;
         }
 
+        .log-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            margin-top: 18px;
+        }
+
+        .log-controls select {
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--medium-gray);
+            font-size: 0.95rem;
+            background: var(--light);
+            color: var(--text);
+        }
+
+        .log-status {
+            font-size: 0.9rem;
+            color: var(--dark-gray);
+            margin-top: 8px;
+        }
+
         .whitelist-panel {
             margin-top: 25px;
             padding: 18px;
@@ -955,6 +978,17 @@
                     <i class="fas fa-play"></i> Start
                 </button>
                 <p class="status-line" id="passive-recon-status">Status: idle</p>
+                <div class="log-controls">
+                    <label for="log-format">Log format</label>
+                    <select id="log-format">
+                        <option value="csv">CSV</option>
+                        <option value="json">JSON</option>
+                    </select>
+                    <button class="btn btn-outline" id="download-log" type="button">
+                        <i class="fas fa-file-download"></i> Download Log
+                    </button>
+                </div>
+                <p class="log-status" id="log-status">Log download: idle</p>
             </div>
 
             <div class="nav-buttons">
@@ -1271,6 +1305,9 @@
         const authorizationCheck = document.getElementById('authorization-check');
         const cancelAuthorization = document.getElementById('cancel-authorization');
         const confirmAuthorization = document.getElementById('confirm-authorization');
+        const downloadLogButton = document.getElementById('download-log');
+        const logFormatSelect = document.getElementById('log-format');
+        const logStatus = document.getElementById('log-status');
 
         const whitelistStorageKey = 'hydra32Whitelist';
         let whitelist = [];
@@ -1344,6 +1381,45 @@
                 return false;
             }
             return whitelist.some((entry) => entry.toLowerCase() === target.toLowerCase());
+        };
+
+        const updateLogStatus = (message) => {
+            if (!logStatus) {
+                return;
+            }
+            logStatus.textContent = `Log download: ${message}`;
+        };
+
+        const downloadLog = async () => {
+            if (!downloadLogButton) {
+                return;
+            }
+            const format = logFormatSelect ? logFormatSelect.value : 'csv';
+            updateLogStatus('requesting...');
+            downloadLogButton.disabled = true;
+
+            try {
+                const response = await fetch(`/logs?format=${encodeURIComponent(format)}`);
+                if (!response.ok) {
+                    throw new Error('Log download failed');
+                }
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const extension = format === 'json' ? 'json' : 'csv';
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `hydra32-log-${timestamp}.${extension}`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+                updateLogStatus('downloaded');
+            } catch (error) {
+                updateLogStatus('failed to reach device');
+            } finally {
+                downloadLogButton.disabled = false;
+            }
         };
 
         const openAuthorizationModal = () => {
@@ -1445,6 +1521,10 @@
                 }
                 openAuthorizationModal();
             });
+        }
+
+        if (downloadLogButton) {
+            downloadLogButton.addEventListener('click', downloadLog);
         }
 
         loadWhitelist();
